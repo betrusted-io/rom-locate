@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 
 """
+# Intro
+
 key2bits.py will transform a binary layout of a key ROM into a set of bits that should be replaced in
 a Spartan-7 bitstream to program the desired key into an FPGA.
 
@@ -29,27 +31,131 @@ By allowing the striping of the key data to be specified in a rom.db file, the b
 can be updated in the case that later on the position of the key LUTs need to be changed for better fitting
 into the FPGA.
 
+# rom.db format
 
-MAPPING KEY->LUT
+KEYROM 0 A SLICE_X36Y50 b'5bbb150b97ae3f53'
+KEYROM 0 B SLICE_X36Y50 b'cc73e7358f8ddfa4'
+KEYROM 0 C SLICE_X36Y50 b'7c250428eb1c34fc'
+KEYROM 0 D SLICE_X36Y50 b'cf001d400920ace8'
+KEYROM 1 A SLICE_X37Y50 b'590ce26fdddad8ae'
+KEYROM 1 B SLICE_X37Y50 b'38b963e9309f90a9'
+  |    | |     |        |_____________________  the value stored in the INIT, for reference only
+  |    | |     |______________________________  the SLICE location of the ROM LUT
+  |    | |____________________________________  the BEL of the ROM LUT
+  |    |______________________________________  which bit of the 32-bit bus this LUT maps to
+  |___________________________________________  root name of the cells
+
+the SLICE maps to one of two sites in a CLBLL_L block; even slices to "X0", and odd slices to "X1" in
+the segbits file.
+
+
+# MAPPING KEY->LUT
 
 The ROM is implemented in hardware as a 256 entry x 32-bit wide ROM. There are 128 ROM LUTs, and each ROM LUT
 maps to one bit of the key ROM. So, KEYROM0* is bit 0, KEYROM1* is bit 1, and so forth. The KEYROMs are further
 broken down into A-D BEL positions, with "A" position corresponding to bits [63:0], "B" to bits [127:64],
 "C" to bits [191:128], and "D" to bits [255:192]. Within each LUT, the INIT value maps the lower six bits
-of the address, with address 0 corresponding to the LSB, and address 255 corresponding to the MSB.
+of the address, with address 0 corresponding to the LSB, and address 63 corresponding to the MSB.
 
 Thus the key data as presented in "program order" needs to be tilted on its side and bit-striped into the
-key array a bit like the following highly simplified example:
+key array:
 
-word 0       word 1       word 2       word 3
-A0 A1 A2 A3  B0 B1 B2 B3  C0 C1 C2 C3  D0 D1 D2 D3
+KEYROM0A is bit 0 of the ROM, addresses 63-0,    so INIT LSB is bit 0 at address 0
+KEYROM0B is bit 0 of the ROM, addresses 127-64,  so INIT LSB is bit 0 at address 64
+KEYROM1C is bit 0 of the ROM, addresses 191-128, so INIT LSB is bit 0 at address 128
+KEYROM1D is bit 0 of the ROM, addresses 255-192, so INIT LSB is bit 0 at address 192
+...
+KEYROM31A is bit 31 of the ROM, addresses 63-0,  so INIT LSB is bit 31 at address 0
+...
+KEYROM31D is bit 31 of the ROM, addresses 255-192, so INIT LSB is bit 31 at address 192
 
-KEYROM0 LUT: D0 C0 B0 A0
-KEYROM1 LUT: D1 C1 B1 A1
-KEYROM2 LUT: D2 C2 B2 A2
-KEYROM3 LUT: D3 C3 B3 A3
+
+# segbits + tilegrid format
+
+Xilinx config frames consist of 101, 32-bit words. Config data for a single CLB is striped across
+36 frames. Thus, one can think of a group of CLBs as belonging to a rectangular array of bits
+where the X-axis describes which CLB, and the Y-axis describes which function:
+
+                         offset -->
+frame N+0 (function A):  CLB_A  CLB_B  CLB_C  CLB_D ...
+frame N+1 (function B):  CLB_A  CLB_B  CLB_C  CLB_D ...
+frame N+2 (function C):  CLB_A  CLB_B  CLB_C  CLB_D ...
+  |
+  v  index
+
+From the tilegrid.json file:
+"CLBLL_L_X24Y50": {
+    "bits": {
+        "CLB_IO_CLK": {
+            "baseaddr": "0x00000C00",    <-- "frame N"
+            "frames": 36,                <-- total number of "functions"
+            "offset": 0,                 <-- offset, must be less than 101-2 = 99 in this case
+            "words": 2                   <-- number of 32-bit words dedicated to each CLB at a given offset, big-endian
+        }
+    },
+    "grid_x": 62,
+    "grid_y": 103,
+    "pin_functions": {},
+    "sites": {
+        "SLICE_X36Y50": "SLICEL",        <-- name of SLICE that will correspond to the ROM LUT location
+        "SLICE_X37Y50": "SLICEL"
+    },
+    "type": "CLBLL_L"
+
+Thus, each CLB is described with a "base address" for a given CLB, and an "offset". The "base address"
+refers to the address of a given frame, and the "offset" is the index into the frame, where the
+striping of the CLB data starts.
+
+The segbits file then locates a bit describing a CLB element based on a "function_bit" notation.
+From the segbits file (all others ignored):
+
+CLBLL_L.SLICEL_X0.ALUT.INIT[00] 32_15
+CLBLL_L.SLICEL_X0.ALUT.INIT[01] 33_15
+CLBLL_L.SLICEL_X0.ALUT.INIT[02] 32_14
+  |        |        |        |   |  |_____ bit offset, 63:0, words in big endian format
+  |        |        |        |   |________ function_index
+  |        |        |        |____________ bit index of the INIT value
+  |        |        |_____________________ BEL of the LUT
+  |        |______________________________ SLICE offset (even or odd) within the CLB
+  |_______________________________________ CLB type
+
+Thus, to resolve the exact bit position of say, SLICE_X36Y50, LUTA, bit 0:
+
+KEYROM0A bit 0 = (baseaddr + offset + function_index as u64)[bit_offset]
+               = (0xC00 + 0x0 + 32) read out as u64 big endian, index to bit 15
+
+
+Note on the big-endian format. The diagram above is more accurately drawn like this, where
+each CLB_ is a 32-bit word in a frame:
+
+                         offset -->
+frame N+0 (function A):  CLB_AH  CLB_AL  CLB_BH  CLB_BL ...
+frame N+1 (function B):  CLB_AH  CLB_AL  CLB_BH  CLB_BL ...
+frame N+2 (function C):  CLB_AH  CLB_AL  CLB_BH  CLB_BL ...
+  |
+  v  index
+
+So a CLB_B would have an "offset" of 2, and bit 63 would be the MSB of CLB_BH; and
+CLB_A would have an "offset" of 0, and bit 15 would be in the middle of CLB_AL. The bit
+positions are as extracted by "explorebits.py", that is, the 32-bit words themselves are
+extracted in big-endian format from the constituent bytes so that the values literally match
+the command values as documented in UG470 (Xilinx's public document describing the bitstream
+format).
 
 """
+
+import argparse
+
+def main():
+
+    parser = argparse.ArgumentParser(description="key file to bitstream patcher")
+    parser.add_argument("-k", "--keys", help="key ROM file", default="key.bin", type=str)
+    parser.add_argument("-t", "--tilegrid", help="tilegrid file", default="db/tilegrid.json", type=str)
+    parser.add_argument("-r", "--romdb", help="ROM LUT mapping database", default="rom.db", type=str)
+    parser.add_argument("-s", "--segbits", help="segbits file", default="db/segbits_clbll_l.db", type=str)
+    parser.add_argument("-c", "--code", help="Output is rust code, not patch stream", default=False, action="store_true")
+    args = parser.parse_args()
+
 
 if __name__ == "__main__":
     main()
