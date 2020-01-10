@@ -1,5 +1,11 @@
 #!/usr/bin/python3
 
+"""
+Helper script that produces a .tcl file that can be run on the rom-locate.py project to change
+the INIT values of all the LUTs. This allows us to do a diff on the .frames file to figure out the
+frame offset of the ROM LUTs in the bitstream.
+"""
+
 for bit in range(0,32):
     for lut in range(4):
         if lut == 0:
