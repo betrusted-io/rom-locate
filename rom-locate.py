@@ -89,42 +89,44 @@ class RomTest(Module):
         self.data = data
 
         rng = SystemRandom()
-        for bit in range(0,32):
-            lutsel = Signal(4)
-            for lut in range(4):
-                if lut == 0:
-                    lutname = 'A'
-                elif lut == 1:
-                    lutname = 'B'
-                elif lut == 2:
-                    lutname = 'C'
-                else:
-                    lutname = 'D'
-                romval = rng.getrandbits(64)
-                print("rom bit ", str(bit), lutname, ": ", binascii.hexlify(romval.to_bytes(8, byteorder='big')))
-                rom_name = "KEYROM" + str(bit) + lutname
-                if bit % 2 == 0:
-                    platform.toolchain.attr_translate[rom_name] = ("LOC", "SLICE_X36Y" + str(50 + bit // 2))
-                else:
-                    platform.toolchain.attr_translate[rom_name] = ("LOC", "SLICE_X37Y" + str(50 + bit // 2))
-                platform.toolchain.attr_translate[rom_name + 'BEL'] = ("BEL", lutname + '6LUT')
-                platform.toolchain.attr_translate[rom_name + 'LOCK'] = ( "LOCK_PINS", "I5:A6, I4:A5, I3:A4, I2:A3, I1:A2, I0:A1" )
-                self.specials += [
-                    Instance( "LUT6",
-                              name=rom_name,
-                              # p_INIT=0x0000000000000000000000000000000000000000000000000000000000000000,
-                              p_INIT=romval,
-                              i_I0= self.address[0],
-                              i_I1= self.address[1],
-                              i_I2= self.address[2],
-                              i_I3= self.address[3],
-                              i_I4= self.address[4],
-                              i_I5= self.address[5],
-                              o_O= lutsel[lut],
-                              attr=("KEEP", "DONT_TOUCH", rom_name, rom_name + 'BEL', rom_name + 'LOCK')
-                              )
-                    # X36Y99 and counting down
-                ]
+        with open("rom.db", "w") as f:
+            for bit in range(0,32):
+                lutsel = Signal(4)
+                for lut in range(4):
+                    if lut == 0:
+                        lutname = 'A'
+                    elif lut == 1:
+                        lutname = 'B'
+                    elif lut == 2:
+                        lutname = 'C'
+                    else:
+                        lutname = 'D'
+                    romval = rng.getrandbits(64)
+                    # print("rom bit ", str(bit), lutname, ": ", binascii.hexlify(romval.to_bytes(8, byteorder='big')))
+                    rom_name = "KEYROM" + str(bit) + lutname
+                    if bit % 2 == 0:
+                        platform.toolchain.attr_translate[rom_name] = ("LOC", "SLICE_X36Y" + str(50 + bit // 2))
+                    else:
+                        platform.toolchain.attr_translate[rom_name] = ("LOC", "SLICE_X37Y" + str(50 + bit // 2))
+                    platform.toolchain.attr_translate[rom_name + 'BEL'] = ("BEL", lutname + '6LUT')
+                    platform.toolchain.attr_translate[rom_name + 'LOCK'] = ( "LOCK_PINS", "I5:A6, I4:A5, I3:A4, I2:A3, I1:A2, I0:A1" )
+                    self.specials += [
+                        Instance( "LUT6",
+                                  name=rom_name,
+                                  # p_INIT=0x0000000000000000000000000000000000000000000000000000000000000000,
+                                  p_INIT=romval,
+                                  i_I0= self.address[0],
+                                  i_I1= self.address[1],
+                                  i_I2= self.address[2],
+                                  i_I3= self.address[3],
+                                  i_I4= self.address[4],
+                                  i_I5= self.address[5],
+                                  o_O= lutsel[lut],
+                                  attr=("KEEP", "DONT_TOUCH", rom_name, rom_name + 'BEL', rom_name + 'LOCK')
+                                  )
+                        # X36Y99 and counting down
+                    ]
+                    f.write("KEYROM " + str(bit) + ' ' + lutname + ' ' + platform.toolchain.attr_translate[rom_name][1] + ' ' + str(binascii.hexlify(romval.to_bytes(8, byteorder='big'))) + '\n')
             self.comb += [
                 If( self.address[6:] == 0,
                     self.data[bit].eq(lutsel[0]))
