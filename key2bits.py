@@ -151,6 +151,9 @@ import json
 import pdb
 import re
 
+def auto_int(x):
+    return int(x, 0)
+
 def main():
 
     parser = argparse.ArgumentParser(description="key file to bitstream patcher")
@@ -159,8 +162,12 @@ def main():
     parser.add_argument("-r", "--romdb", help="ROM LUT mapping database", default="rom.db", type=str)
     parser.add_argument("-s", "--segbits", help="segbits file", default="db/segbits_clbll_l.db", type=str)
     parser.add_argument("-c", "--code", help="Output is rust code, not patch stream", default=False, action="store_true")
+    parser.add_argument("-b", "--base-offset", help="Base offset in bitstream for patch start, in frames", default=0, type=auto_int)
     args = parser.parse_args()
 
+    base_offset_frames = args.base_offset
+
+    #-----------  READ IN DATABASES ------------
     slice_db = {}
     with open(args.tilegrid, "r") as f:
         json_file = f.read()
@@ -196,6 +203,7 @@ def main():
             # so A, B, C, D order in the ROM would indicate A gets the LSB addresses.
             # permuting the order of A,B,C,D in the rom.db file would change the mapping of LUTs to addresses!
 
+    #-----------  READ IN KEY DATA ------------
     keyrom = []
     with open(args.keys, "rb") as f:
         keybytes = f.read()
@@ -207,6 +215,7 @@ def main():
     if len(keyrom) != 256:
         print("warning: key.bin file size is wrong, are you using the right file?")
 
+    #-----------  DERIVE THE PATCHING LIST ------------
     # at this point, we want to derive a list of addresses to patch in the bitstream,
     # each list entry is a 32-entry dictionary, and each entry corresponds to an (address, bit) position in rom.bin
     patchdata = {}
@@ -268,27 +277,32 @@ def main():
 
                 patchdata[thisbit_frameaddress] = frame
 
+    #-----------  REBASE THE PATCHING LIST ------------
     streambase = min(sorted(patchdata.keys()))
     patchdata_sorted = []
     for key in sorted(patchdata.keys()):
-        patchdata_sorted += [[key - streambase, patchdata[key]]]
+        patchdata_sorted += [[key - streambase + base_offset_frames, patchdata[key]]]
 
-    for frame_rec in patchdata_sorted:
-        print("Patch on relative frame ", frame_rec[0], ":", end='')
-        frame = frame_rec[1]
-        for word in range(101):
-            if frame[word] == None:
-                print('none, ', end='')
-            else:
-                wordvalue = 0
-                wordbits = frame[word]
-                for bit in range(32):
-                    coord = wordbits[bit]
-                    bitvalue = (keyrom[coord[0]] & (1 << coord[1]))
-                    if bitvalue != 0:
-                        wordvalue |= (1 << bit)
-                print('0x{:08x}, '.format(wordvalue), end='')
-        print("")
+    #-----------  OUTPUT THE PATCHING LIST ------------
+    if args.code == False:
+        for frame_rec in patchdata_sorted:
+            print("Patch on relative frame 0x{:08x}: ".format(frame_rec[0]), end='')
+            frame = frame_rec[1]
+            for word in range(101):
+                if frame[word] == None:
+                    print('none, ', end='')
+                else:
+                    wordvalue = 0
+                    wordbits = frame[word]
+                    for bit in range(32):
+                        coord = wordbits[bit]
+                        bitvalue = (keyrom[coord[0]] & (1 << coord[1]))
+                        if bitvalue != 0:
+                            wordvalue |= (1 << bit)
+                    print('0x{:08x}, '.format(wordvalue), end='')
+            print("")
+    else:
+        print("Rust code snippet output is pending")
 
 if __name__ == "__main__":
     main()
