@@ -199,9 +199,6 @@ def main():
         for line in f:
             items = line.split()
             rom_db[int(items[1])] += [{'bel': items[2] + 'LUT', 'slice': items[3]}]
-            # the ordering of LUTs in rom_db is indicative of the ordering of bit addressing to lut
-            # so A, B, C, D order in the ROM would indicate A gets the LSB addresses.
-            # permuting the order of A,B,C,D in the rom.db file would change the mapping of LUTs to addresses!
 
     #-----------  READ IN KEY DATA ------------
     keyrom = []
@@ -209,7 +206,7 @@ def main():
         keybytes = f.read()
         index = 0
         while index < len(keybytes):
-            word = int().from_bytes(keybytes[index:index+4], byteorder='little', signed=False)
+            word = int().from_bytes(keybytes[index:index+4], byteorder='big', signed=False)
             index = index + 4
             keyrom += [word]
     if len(keyrom) != 256:
@@ -221,7 +218,7 @@ def main():
     patchdata = {}
     for keyrom_data_bit in range(32):
         item = rom_db[keyrom_data_bit]
-        for lut in range(4): # ordering of the LUT mapping in rom.db influences this!
+        for lut in range(4):
             slices = item[lut]
             slice = slices['slice']
             bel = slices['bel']
@@ -286,11 +283,11 @@ def main():
     #-----------  OUTPUT THE PATCHING LIST ------------
     if args.code == False:
         for frame_rec in patchdata_sorted:
-            print("Patch on relative frame 0x{:08x}: ".format(frame_rec[0]), end='')
+            print("0x{:08x}".format(frame_rec[0]), end='')
             frame = frame_rec[1]
             for word in range(101):
                 if frame[word] == None:
-                    print('none, ', end='')
+                    print(',none', end='')
                 else:
                     wordvalue = 0
                     wordbits = frame[word]
@@ -299,10 +296,29 @@ def main():
                         bitvalue = (keyrom[coord[0]] & (1 << coord[1]))
                         if bitvalue != 0:
                             wordvalue |= (1 << bit)
-                    print('0x{:08x}, '.format(wordvalue), end='')
+                    print(',0x{:08x}'.format(wordvalue), end='')
             print("")
     else:
         print("Rust code snippet output is pending")
+        for frame_rec in patchdata_sorted:
+            print("Patch on relative frame 0x{:08x}: ".format(frame_rec[0]), end='')
+            frame = frame_rec[1]
+            for word in range(101):
+                if frame[word] == None:
+                    continue
+                else:
+                    wordvalue = 0
+                    wordbits = frame[word]
+                    print('\n -{:02}- '.format(word))
+                    for bit in range(32):
+                        coord = wordbits[bit]
+                        bitvalue = (keyrom[coord[0]] & (1 << coord[1]))
+                        if bitvalue != 0:
+                            wordvalue |= (1 << bit)
+                        print(coord, end='')
+                    # print('0x{:08x}, '.format(wordvalue), end='')
+
+            print("")
 
 if __name__ == "__main__":
     main()
