@@ -46,7 +46,7 @@ io_7a = [
 # Platform -----------------------------------------------------------------------------------------
 
 class Platform(XilinxPlatform):
-    def __init__(self, part, io, toolchain="vivado", programmer="vivado"):
+    def __init__(self, part, io, toolchain="vivado", programmer="vivado", make_mod=True):
         XilinxPlatform.__init__(self, part, io, toolchain=toolchain)
 
         # NOTE: to do quad-SPI mode, the QE bit has to be set in the SPINOR status register. OpenOCD
@@ -70,6 +70,25 @@ class Platform(XilinxPlatform):
             ["write_cfgmem -verbose -force -format bin -interface spix1 -size 64 "
              "-loadbit \"up 0x0 {build_name}.bit\" -file {build_name}.bin"]
         self.programmer = programmer
+
+        if make_mod:
+            for bit in range(0, 32):
+                for lut in range(4):
+                    if lut == 0:
+                        lutname = 'A'
+                    elif lut == 1:
+                        lutname = 'B'
+                    elif lut == 2:
+                        lutname = 'C'
+                    else:
+                        lutname = 'D'
+
+                    self.toolchain.additional_commands += ["set_property INIT 64'hA6C355555555A6C3 [get_cells KEYROM" + str(bit) + lutname + "]"]
+
+            self.toolchain.additional_commands += ["write_bitstream -force top-mod.bit"]
+            self.toolchain.additional_commands += \
+                ["write_cfgmem -verbose -force -format bin -interface spix1 -size 64 "
+                 "-loadbit \"up 0x0 {build_name}-mod.bit\" -file {build_name}-mod.bin"]
 
     def create_programmer(self):
         if self.programmer == "vivado":
@@ -127,15 +146,15 @@ class RomTest(Module):
                         # X36Y99 and counting down
                     ]
                     f.write("KEYROM " + str(bit) + ' ' + lutname + ' ' + platform.toolchain.attr_translate[rom_name][1] + ' ' + str(binascii.hexlify(romval.to_bytes(8, byteorder='big'))) + '\n')
-            self.comb += [
-                If( self.address[6:] == 0,
-                    self.data[bit].eq(lutsel[0]))
-                .Elif(self.address[6:] == 1,
-                      self.data[bit].eq(lutsel[1]))
-                .Elif(self.address[6:] == 2,
-                      self.data[bit].eq(lutsel[2]))
-                .Else(self.data[bit].eq(lutsel[3]))
-            ]
+                self.comb += [
+                    If( self.address[6:] == 0,
+                        self.data[bit].eq(lutsel[0]))
+                    .Elif(self.address[6:] == 1,
+                          self.data[bit].eq(lutsel[1]))
+                    .Elif(self.address[6:] == 2,
+                          self.data[bit].eq(lutsel[2]))
+                    .Else(self.data[bit].eq(lutsel[3]))
+                ]
 
 class TestSoC(SoCMini):
     def __init__(self, platform, **kwargs):
