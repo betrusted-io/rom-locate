@@ -148,12 +148,12 @@ class RomTest(Module):
                     f.write("KEYROM " + str(bit) + ' ' + lutname + ' ' + platform.toolchain.attr_translate[rom_name][1] + ' ' + str(binascii.hexlify(romval.to_bytes(8, byteorder='big'))) + '\n')
                 self.comb += [
                     If( self.address[6:] == 0,
-                        self.data[bit].eq(lutsel[0]))
+                        self.data[bit].eq(lutsel[2]))
                     .Elif(self.address[6:] == 1,
-                          self.data[bit].eq(lutsel[1]))
+                          self.data[bit].eq(lutsel[3]))
                     .Elif(self.address[6:] == 2,
-                          self.data[bit].eq(lutsel[2]))
-                    .Else(self.data[bit].eq(lutsel[3]))
+                          self.data[bit].eq(lutsel[0]))
+                    .Else(self.data[bit].eq(lutsel[1]))
                 ]
 
 class TestSoC(SoCMini):
