@@ -85,10 +85,7 @@ class Platform(XilinxPlatform):
 
                     self.toolchain.additional_commands += ["set_property INIT 64'hA6C355555555A6C3 [get_cells KEYROM" + str(bit) + lutname + "]"]
 
-            self.toolchain.additional_commands += ["write_bitstream -force top-mod.bit"]
-            self.toolchain.additional_commands += \
-                ["write_cfgmem -verbose -force -format bin -interface spix1 -size 64 "
-                 "-loadbit \"up 0x0 {build_name}-mod.bit\" -file {build_name}-mod.bin"]
+            self.toolchain.additional_commands += ["write_bitstream -bin_file -force top-mod.bit"]
 
     def create_programmer(self):
         if self.programmer == "vivado":
