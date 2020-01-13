@@ -151,6 +151,78 @@ import json
 import pdb
 import re
 
+def sum_columns(column_dict, stop):
+    sum = 0
+
+    for col in sorted(column_dict):
+        if int(col) < stop:
+            sum += int(column_dict[col]['frame_count'])
+
+    return sum
+
+"""
+Decode a frame address to a framestream position.
+
+Frame addresses are the absolute address of a frame within the FPGA. However,
+a typical bitstream does not specify frame addresses. Frames are implicitly addressed,
+where each frame in the FPGA is visited in a well-defined order. To patch a bitstream,
+one needs to translate the frame address to the position in the bitstream. 
+
+This relative position in the bitstream is called a "framestream" position in this program.
+"""
+def address_to_framestream(db, address):
+    minor_address = address & 0x7F
+    column_address = (address >> 7) & 0x3FF
+    row_address = (address >> 17) & 0x1F
+    clock_region_code = (address >> 22) & 0x1
+    block_type_code = (address >> 23) & 7
+
+    region_met = False
+    row_met = False
+    type_met = False
+    framestream_offset = 0
+    for region in range(len(db['global_clock_regions'])):
+        if region == 0:
+            clock_region = 'top'
+        else:
+            clock_region = 'bottom'
+
+        if region >= clock_region_code:
+            region_met = True
+        if type_met:
+            break
+
+        for row in range(len(db['global_clock_regions'][clock_region]['rows'])):
+            if region_met and (row >= row_address):
+                row_met = True
+
+            if type_met:
+                break
+
+            for bt in range(3):
+                if (bt >= block_type_code) and region_met and row_met:
+                    type_met = True
+
+                if bt == 0:
+                    block_type = 'CLB_IO_CLK'
+                elif bt == 1:
+                    block_type = 'BLOCK_RAM'
+                else:
+                    block_type = 'CFG_CLB'
+
+                try:
+                    columns = db['global_clock_regions'][clock_region]['rows'][str(row)]['configuration_buses'][block_type]['configuration_columns']
+                except KeyError as e:
+                    continue # if the type isn't in the DB, don't throw an error
+
+                if type_met:
+                    framestream_offset += sum_columns(columns, column_address)
+                    break # we've resolved all the coordinates, done walking the bitstream output
+                else:
+                    framestream_offset += sum_columns(columns, 1000) # a large number greater than any # of columns
+
+    return framestream_offset + minor_address
+
 def auto_int(x):
     return int(x, 0)
 
@@ -158,14 +230,12 @@ def main():
 
     parser = argparse.ArgumentParser(description="key file to bitstream patcher")
     parser.add_argument("-k", "--keys", help="key ROM file", default="key.bin", type=str)
+    parser.add_argument("-p", "--part", help="Part frame mapping file", default="db/xc7s50csga324-1il.json", type=str)
     parser.add_argument("-t", "--tilegrid", help="tilegrid file", default="db/tilegrid.json", type=str)
     parser.add_argument("-r", "--romdb", help="ROM LUT mapping database", default="rom.db", type=str)
     parser.add_argument("-s", "--segbits", help="segbits file", default="db/segbits_clbll_l.db", type=str)
     parser.add_argument("-c", "--code", help="Output is rust code, not patch stream", default=False, action="store_true")
-    parser.add_argument("-b", "--base-offset", help="Base offset in bitstream for patch start, in frames", default=0, type=auto_int)
     args = parser.parse_args()
-
-    base_offset_frames = args.base_offset
 
     #-----------  READ IN DATABASES ------------
     slice_db = {}
@@ -179,6 +249,10 @@ def main():
                     slice_db[slices] = entry['bits']['CLB_IO_CLK']
     # slice_db is now a lookup for SLICE locations to addresses and offsets
 
+    with open(args.part, "r") as f:
+        partfile = f.read()
+        part_db = json.loads(partfile)
+    # part_db now contains the frame-to-bitstream position database
 
     segbits = []
     with open(args.segbits, "r") as f:
@@ -274,11 +348,10 @@ def main():
 
                 patchdata[thisbit_frameaddress] = frame
 
-    #-----------  REBASE THE PATCHING LIST ------------
-    streambase = min(sorted(patchdata.keys()))
+    #-----------  SORT PATCH LIST AND TRANSLATE ADDRESS TO FRAMESTREAM POSITION ------------
     patchdata_sorted = []
     for key in sorted(patchdata.keys()):
-        patchdata_sorted += [[key - streambase + base_offset_frames, patchdata[key]]]
+        patchdata_sorted += [[address_to_framestream(part_db, key), patchdata[key]]]
 
     #-----------  OUTPUT THE PATCHING LIST ------------
     if args.code == False:
