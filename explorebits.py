@@ -247,6 +247,23 @@ def dumpframe(bitstream):
         print(' 0x{:08x}'.format(command), end=',')
     print('')
 
+def extractframes(bitstream, count):
+    global position
+    global framecount
+
+    ret = []
+    while position < count:
+        cur_frame = framecount
+        framedat = []
+        framecount = framecount + 1
+        for i in range(101):
+            command = int.from_bytes(bitstream[position:position + 4], byteorder='big')
+            position = position + 4
+            framedat += [command]
+        ret += [[cur_frame, framedat]]
+
+    return ret
+
 def setup(file):
     bitfile = readbit(file)
     type2(bitfile)
@@ -256,10 +273,12 @@ def setup(file):
 
 def main():
     global position
+    global framecount
 
     parser = argparse.ArgumentParser(description="bitstream utilities")
     parser.add_argument("-f", "--file", help="Initial bitstream to work with", type=str)
     parser.add_argument("-i", "--interactive", help="Break into interactive mode when done", default=False, action="store_true")
+    parser.add_argument("-d", "--diff-file", help="Secondary bitstream file; script will find the first difference and return the frame offset", type=str)
     args = parser.parse_args()
 
     if args.file == None:
@@ -269,7 +288,7 @@ def main():
     ifile = args.file
     filename, file_extension = os.path.splitext(ifile)
 
-    if file_extension == '.bit':
+    if file_extension == '.bit' or file_extension == '.bin':
         bit = readbit(ifile)
     elif file_extension == '.clr':
         bit = read_decrypt(ifile)
@@ -277,11 +296,33 @@ def main():
         print("unrecognized extension")
         pdb.set_trace()
 
-    count = type2(bit)
-    end = position + count
+    if args.diff_file != None:
+        diff_file = args.diff_file
+        diff = read_decrypt(diff_file)
 
-    while position < end:
-        dumpframe(bit)
+        position = 0
+        framecount = 0
+        count = type2(bit)
+        bit_frames = extractframes(bit, count)
+
+        position = 0
+        framecount = 0
+        count = type2(diff)
+        diff_frames = extractframes(diff, count)
+
+        for frames in bit_frames:
+            diff_frame = diff_frames[frames[0]]
+
+            if diff_frame[1] != frames[1]:
+                print('0x{:08x}'.format(frames[0]))
+                break
+
+    else:
+        count = type2(bit)
+        end = position + count
+
+        while position < end:
+            dumpframe(bit)
 
     if args.interactive:
         pdb.set_trace()
