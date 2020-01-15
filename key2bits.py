@@ -478,36 +478,36 @@ mod tests {
     fn check_frames() {
 
         const ROM: [u32; 256] = [\n""")
-    keyrom_little = []
-    with open(args.keys, "rb") as f:
-        keybytes = f.read()
-        index = 0
-        while index < len(keybytes):
-            word = int().from_bytes(keybytes[index:index+4], byteorder='big', signed=False)
-            index = index + 4
-            keyrom_little += [word]
-    for word in keyrom_little:
-        print('               0x{:08x},'.format(word))
-    print("""
-             ];""")
-    for frame_rec in patchdata_sorted:
-        frame = frame_rec[1]
-        for word in range(101):
-            if frame[word] == None:
-                break
-            else:
-                wordvalue = 0
-                wordbits = frame[word]
-                for bit in range(32):
-                    coord = wordbits[bit]
-                    bitvalue = (keyrom[coord[0]] & (1 << coord[1]))
-                    if bitvalue != 0:
-                        wordvalue |= (1 << bit)
-                print('        assert_eq!(crate::patch_frame({}'.format(frame_rec[0]) + ', ' + '{}'.format(word) + ', ROM), (Some(' + '0x{:08x}'.format(wordvalue) + '), Some(!0x{:08x}'.format(wordvalue) + ')));')
+        keyrom_little = []
+        with open(args.keys, "rb") as f:
+            keybytes = f.read()
+            index = 0
+            while index < len(keybytes):
+                word = int().from_bytes(keybytes[index:index+4], byteorder='big', signed=False)
+                index = index + 4
+                keyrom_little += [word]
+        for word in keyrom_little:
+            print('               0x{:08x},'.format(word))
+        print("""
+                 ];""")
+        for frame_rec in patchdata_sorted:
+            frame = frame_rec[1]
+            for word in range(101):
+                if frame[word] == None:
+                    break
+                else:
+                    wordvalue = 0
+                    wordbits = frame[word]
+                    for bit in range(32):
+                        coord = wordbits[bit]
+                        bitvalue = (keyrom[coord[0]] & (1 << coord[1]))
+                        if bitvalue != 0:
+                            wordvalue |= (1 << bit)
+                    print('        assert_eq!(crate::patch_frame({}'.format(frame_rec[0]) + ', ' + '{}'.format(word) + ', ROM), (Some(' + '0x{:08x}'.format(wordvalue) + '), Some(!0x{:08x}'.format(wordvalue) + ')));')
 
-    print('        // also test the null case, frame 0 should typically have no mappings.')
-    print('        assert_eq!(crate::patch_frame(0x0, 0, ROM), (None, None) );')
-    print("""
+        print('        // also test the null case, frame 0 should typically have no mappings.')
+        print('        assert_eq!(crate::patch_frame(0x0, 0, ROM), (None, None) );')
+        print("""
     }
 }
         """)
