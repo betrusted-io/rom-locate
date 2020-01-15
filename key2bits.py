@@ -390,6 +390,18 @@ use alloc::vec::Vec;
 /// offset is the offset in the frame, from 0-100 (101 words)
 /// note that each primitive in a bitstream is a u32
 /// 
+/// we are using a Vec for the frame data, even though frames have a well-known length
+/// of up to 101 elements. The reason is that typically the number of items to patch
+/// in a frame is usually much less than the 101 elements, and so it is wasteful to code
+/// for the unused elements statically. That being said, this results in the initialization
+/// of the function taking quite a lot of code space, as every element is turned into a
+/// load/store pair as the Vecs are dynamically allocated. One possible optimization
+/// is to determine the maximum length of any PatchFrame array and create a coding for
+/// words that should be skipped in case the frames are not homogenous in patch location
+/// vs length, and then turn these into slices or a [T; N] notation const. However,
+/// we'll stick with this for now as there are more important thing to do than optimize
+/// this code.
+///
 /// returns None if the position should not be patched
 /// returns a tuple of the value and its inverse; this is done to reduce the timing
 /// sidechannel. The inverse value needs to be consumed to prevent the compiler
