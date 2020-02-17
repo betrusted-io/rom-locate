@@ -150,6 +150,7 @@ import argparse
 import json
 import pdb
 import re
+import os
 
 def sum_columns(column_dict, stop):
     sum = 0
@@ -276,15 +277,19 @@ def main():
 
     #-----------  READ IN KEY DATA ------------
     keyrom = []
-    with open(args.keys, "rb") as f:
-        keybytes = f.read()
-        index = 0
-        while index < len(keybytes):
-            word = int().from_bytes(keybytes[index:index+4], byteorder='big', signed=False)
-            index = index + 4
-            keyrom += [word]
-    if len(keyrom) != 256:
-        print("warning: key.bin file size is wrong, are you using the right file?")
+    try:
+        with open(args.keys, "rb") as f:
+            keybytes = f.read()
+            index = 0
+            while index < len(keybytes):
+                word = int().from_bytes(keybytes[index:index+4], byteorder='big', signed=False)
+                index = index + 4
+                keyrom += [word]
+        if len(keyrom) != 256:
+            print("warning: key.bin file size is wrong, are you using the right file?")
+    except:
+        for i in range(256):
+            keyrom += [int().from_bytes(os.urandom(4), byteorder='big', signed=False)]
 
     #-----------  DERIVE THE PATCHING LIST ------------
     # at this point, we want to derive a list of addresses to patch in the bitstream,
@@ -478,15 +483,7 @@ mod tests {
     fn check_frames() {
 
         const ROM: [u32; 256] = [\n""")
-        keyrom_little = []
-        with open(args.keys, "rb") as f:
-            keybytes = f.read()
-            index = 0
-            while index < len(keybytes):
-                word = int().from_bytes(keybytes[index:index+4], byteorder='big', signed=False)
-                index = index + 4
-                keyrom_little += [word]
-        for word in keyrom_little:
+        for word in keyrom:
             print('               0x{:08x},'.format(word))
         print("""
                  ];""")
