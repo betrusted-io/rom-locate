@@ -26,3 +26,5 @@ By participating in this project you agree to abide its terms.
 ## License
 
 Copyright © 2020
+
+Licensed under the [CERN OHL v1.2](https://ohwr.org/project/licenses/wikis/cern-ohl-v1.2) [LICENSE](LICENSE)
