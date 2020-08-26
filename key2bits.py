@@ -291,6 +291,55 @@ def main():
         for i in range(256):
             keyrom += [int().from_bytes(os.urandom(4), byteorder='big', signed=False)]
 
+    #-----------  OVERWRITE WBSTAR PATCH LIST
+    """
+    patches for bit 29 - RS_TS_B - must be 1
+    0x110 0xffffffff
+    0x114 0xffffffff
+    0x130 0xffffffff
+    0x134 0xffffffff
+    0x310 0xffffffff
+    0x314 0xffffffff
+    0x330 0xffffffff
+    0x334 0xffffffff
+    patches for bit 30 - RS[0] - must be 1
+    0x108 0xffffffff
+    0x10c 0xffffffff
+    0x128 0xffffffff
+    0x12c 0xffffffff
+    0x308 0xffffffff
+    0x30c 0xffffffff
+    0x328 0xffffffff
+    0x32c 0xffffffff
+    patches for bit 31 - RS[1] - don't care/not used
+    0x100 0xffffffff
+    0x104 0xffffffff
+    0x120 0xffffffff
+    0x124 0xffffffff
+    0x300 0xffffffff
+    0x304 0xffffffff
+    0x320 0xffffffff
+    0x324 0xffffffff
+    """
+    # set RS_TS_B to 1
+    keyrom[0x110//4] = 0xffffffff
+    keyrom[0x114//4] = 0xffffffff
+    keyrom[0x130//4] = 0xffffffff
+    keyrom[0x134//4] = 0xffffffff
+    keyrom[0x310//4] = 0xffffffff
+    keyrom[0x314//4] = 0xffffffff
+    keyrom[0x330//4] = 0xffffffff
+    keyrom[0x334//4] = 0xffffffff
+    # set RS[0] to 1
+    keyrom[0x108//4] = 0xffffffff
+    keyrom[0x10c//4] = 0xffffffff
+    keyrom[0x128//4] = 0xffffffff
+    keyrom[0x12c//4] = 0xffffffff
+    keyrom[0x308//4] = 0xffffffff
+    keyrom[0x30c//4] = 0xffffffff
+    keyrom[0x328//4] = 0xffffffff
+    keyrom[0x32c//4] = 0xffffffff
+
     #-----------  DERIVE THE PATCHING LIST ------------
     # at this point, we want to derive a list of addresses to patch in the bitstream,
     # each list entry is a 32-entry dictionary, and each entry corresponds to an (address, bit) position in rom.bin
@@ -360,6 +409,27 @@ def main():
 
     #-----------  OUTPUT THE PATCHING LIST ------------
     if args.code == False:
+        # decode the no-fly zone that forces WBSTAR to a value that triggers a reset of the device
+        patchlist = [[], [], []]  # 29, 30, 31
+        for i in range(0, 3):
+            patchlist[i] = [0] * 256
+
+        for frame_rec in patchdata_sorted:
+            frame = frame_rec[1]
+            for word in range(101):
+                if frame[word] != None:
+                    wordbits = frame[word]
+                    for bit in range(29, 32):
+                        coord = wordbits[bit]
+                        patchlist[bit - 29][coord[0]] |= 1 << coord[1]
+
+        for i in range(0, 3):
+            print("patches for bit {}".format(i + 29))
+            list = patchlist[i]
+            for j in range(256):
+                if list[j] != 0:
+                    print("0x{:02x} 0x{:08x}".format(j * 4, list[j]))
+
         for frame_rec in patchdata_sorted:
             print("0x{:08x}".format(frame_rec[0]), end='')
             frame = frame_rec[1]
